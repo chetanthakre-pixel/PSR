@@ -1,0 +1,18 @@
+# Downloaded assets (not tracked in version control)
+assets/
+weights/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Streamlit cache
+.streamlit/cache/
+
+# Env
+.env
+venv/
+.venv/

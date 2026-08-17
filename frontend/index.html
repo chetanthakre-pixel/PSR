@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PSR Data Console | SIH 1732</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="stars"></div>
+    <div id="stars2"></div>
+    <div id="stars3"></div>
+
+    <!-- Sticky Navigation Header -->
+    <header class="top-nav">
+        <div class="nav-brand">
+            <span class="nav-badge">SIH 1732</span>
+            <span class="nav-title">CHANDRAYAAN-2 OHRC <span class="nav-sub">/ PSR ANALYZER</span></span>
+        </div>
+        <div class="nav-right">
+            <div class="nav-status">
+                <span class="status-dot"></span>
+                <span>TELEMETRY READY</span>
+            </div>
+            <nav class="nav-tabs">
+                <button class="nav-tab active" id="tab-denoise" data-tab="denoise">
+                    <span class="tab-icon">⚡</span> Denoising Pipeline
+                </button>
+                <button class="nav-tab" id="tab-illum" data-tab="illum">
+                    <span class="tab-icon">🔥</span> Illumination Map
+                </button>
+                <button class="nav-tab" id="tab-compare" data-tab="compare">
+                    <span class="tab-icon">🔍</span> Final Compare
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Mission Hero Header -->
+    <section class="hero">
+        <div class="hero-tag">ISRO CHANDRAYAAN-2 OHRC MISSION DATA</div>
+        <h1 class="hero-title">PSR ENHANCEMENT ANALYZER</h1>
+        <p class="hero-sub">PERMANENTLY SHADOWED REGIONS · ADVANCED MULTI-ALGORITHM DENOISING BENCHMARK</p>
+    </section>
+
+    <!-- Main Workspace -->
+    <main class="container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3 class="sidebar-head">DATA SOURCE</h3>
+                <label for="image-select">SAMPLE OHRC SWATH</label>
+                <select id="image-select">
+                    <option value="">-- Select Swath --</option>
+                    <option value="psr_source.jpg">psr_source.jpg (Chandrayaan-2)</option>
+                </select>
+                <div class="divider-label">— OR UPLOAD CUSTOM IMAGE —</div>
+                <div class="upload-dropzone" id="drop-zone">
+                    <input type="file" id="image-upload" accept="image/png, image/jpeg, image/tiff, image/jpg, .tif, .tiff, .png, .jpg, .jpeg">
+                    <div class="dropzone-content" id="dropzone-content">
+                        <span class="upload-icon">📁</span>
+                        <span class="upload-text">Choose / Drop Image File</span>
+                        <span class="upload-hint">PNG, JPG, TIFF, WEBP</span>
+                    </div>
+                    <div class="file-preview-badge hidden" id="file-badge">
+                        <div class="file-badge-info">
+                            <span class="file-badge-name" id="file-name">filename.png</span>
+                            <span class="file-badge-size" id="file-size">0 KB</span>
+                        </div>
+                        <button type="button" class="file-badge-remove" id="remove-file-btn" title="Remove file">✕</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 class="sidebar-head">CLAHE PARAMETERS</h3>
+                <label for="clip-limit">CLIP LIMIT: <span id="clip-val" style="color: var(--accent); font-weight: bold;">3.0</span></label>
+                <input type="range" id="clip-limit" min="1.0" max="8.0" step="0.5" value="3.0">
+                
+                <label for="tile-size">TILE GRID SIZE: <span id="tile-val" style="color: var(--accent); font-weight: bold;">8</span>×<span id="tile-val2" style="color: var(--accent); font-weight: bold;">8</span></label>
+                <input type="range" id="tile-size" min="4" max="16" step="2" value="8">
+            </div>
+
+            <button id="run-btn" class="primary-btn">
+                <span>⚡</span> EXECUTE PIPELINE
+            </button>
+        </aside>
+
+        <!-- Main Display Content Area -->
+        <section class="content">
+            <!-- Loading Indicator -->
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p class="loading-text">PROCESSING TELEMETRY & DENOISING...</p>
+            </div>
+
+            <!-- Tab View 1: Denoising Pipeline -->
+            <div id="denoise-view">
+                <!-- Welcome State -->
+                <div id="welcome" class="welcome-section fade-in">
+                    <div class="welcome-icon">🛰️</div>
+                    <h2>READY FOR TELEMETRY ANALYSIS</h2>
+                    <p>Select an OHRC image from the repository or upload a lunar image file to benchmark NLM, BM3D, and Wavelet algorithms.</p>
+                </div>
+
+                <!-- Results Section -->
+                <div id="results" class="hidden fade-in">
+                    <h2 class="sec-label">
+                        <span>STAGE 1 / PREPROCESSING & NORMALIZATION</span>
+                        <span style="font-size: 0.65rem; color: var(--txt-dim);">AUTOCROP + BAD PIXEL + CLAHE</span>
+                    </h2>
+                    <div class="grid-3">
+                        <div class="img-card">
+                            <div class="img-card-head">
+                                <span>RAW PSR CROP</span>
+                                <span style="color: var(--txt-dim);">INPUT</span>
+                            </div>
+                            <div class="img-wrapper">
+                                <img id="img-orig" src="" alt="Raw PSR">
+                            </div>
+                        </div>
+                        <div class="img-card">
+                            <div class="img-card-head">
+                                <span>NORMALIZED</span>
+                                <span style="color: var(--txt-dim);">[0, 1] FLOAT32</span>
+                            </div>
+                            <div class="img-wrapper">
+                                <img id="img-norm" src="" alt="Normalized">
+                            </div>
+                        </div>
+                        <div class="img-card">
+                            <div class="img-card-head">
+                                <span>CLAHE ENHANCED</span>
+                                <span style="color: var(--accent);">PRE-DENOISE</span>
+                            </div>
+                            <div class="img-wrapper">
+                                <img id="img-clahe" src="" alt="CLAHE">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Winner Announcement Banner -->
+                    <div class="winner-banner" id="winner-banner">
+                        <div>
+                            <div class="wbanner-eyebrow">OPTIMAL ALGORITHM DETECTED</div>
+                            <div class="wbanner-name" id="winner-name">BM3D</div>
+                            <div class="wbanner-reason" id="winner-reason">Highest overall weighted score across EdgePI, CNR, SNR, and Entropy metrics.</div>
+                        </div>
+                        <div>
+                            <button id="download-btn" class="primary-btn" style="width: auto; padding: 12px 24px;">
+                                ⬇ DOWNLOAD CLEANEST IMAGE
+                            </button>
+                        </div>
+                    </div>
+
+                    <h2 class="sec-label">
+                        <span>STAGE 2 / MULTI-ALGORITHM BENCHMARK RESULTS</span>
+                        <span style="font-size: 0.65rem; color: var(--txt-dim);">HOVER OVER ANY IMAGE TO COMPARE WITH PRE-DENOISED CLAHE</span>
+                    </h2>
+                    <div id="denoisers-grid" class="grid-2">
+                        <!-- Cards dynamically injected by script.js -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab View 2: Relative Illumination Map -->
+            <div id="illum-view" class="hidden">
+                <!-- Awaiting Data State -->
+                <div id="illum-empty" class="welcome-section fade-in">
+                    <div class="welcome-icon">🔥</div>
+                    <h2>AWAITING DENOISED TELEMETRY</h2>
+                    <p>Execute the Denoising Pipeline from the sidebar to automatically compute the false-color Relative Illumination Map on the optimal cleaned image.</p>
+                </div>
+
+                <!-- Illumination Results -->
+                <div id="illum-results" class="hidden fade-in">
+                    <h2 class="sec-label">
+                        <span>STAGE 3 / RELATIVE ILLUMINATION MAP</span>
+                        <span style="font-size: 0.65rem; color: var(--accent);">INFERNO COLORMAP</span>
+                    </h2>
+
+                    <!-- Scientific Disclaimer Callout -->
+                    <div class="disclaimer-card">
+                        <div class="disclaimer-icon">⚠️</div>
+                        <div class="disclaimer-text">
+                            <strong>Scientific Context:</strong> This visualization applies OpenCV's perceptually uniform <code>COLORMAP_INFERNO</code> to the highest-scoring denoised output. It maps faint secondary illumination and subtle reflectance gradients across dark crater terrain for visual geological interpretation. <em>(True 3D elevation modeling requires stereo DEM imagery or shape-from-shading analysis).</em>
+                        </div>
+                    </div>
+
+                    <!-- Side-by-Side Comparison -->
+                    <div class="grid-2">
+                        <div class="img-card">
+                            <div class="img-card-head">
+                                <span>GRAYSCALE (<span id="illum-gray-method" style="color: var(--accent);">BEST METHOD</span>)</span>
+                                <span style="color: var(--txt-dim);">OPTIMAL DENOISED</span>
+                            </div>
+                            <div class="img-wrapper">
+                                <img id="img-illum-gray" src="" alt="Grayscale Best Method">
+                            </div>
+                            <div class="card-footer-action">
+                                <button id="download-gray-btn" class="sec-btn">⬇ DOWNLOAD GRAYSCALE</button>
+                            </div>
+                        </div>
+
+                        <div class="img-card best">
+                            <div class="img-card-head">
+                                <span style="color: var(--accent);">RELATIVE ILLUMINATION (INFERNO)</span>
+                                <span style="color: var(--accent); font-weight: 700;">FALSE-COLOR</span>
+                            </div>
+                            <div class="img-wrapper">
+                                <img id="img-illum-color" src="" alt="Inferno Relative Illumination Map">
+                            </div>
+                            <div class="card-footer-action">
+                                <button id="download-illum-btn" class="sec-btn" style="border-color: var(--accent); color: var(--accent-bright);">🔥 DOWNLOAD ILLUMINATION MAP</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Colormap Gradient Scale Bar -->
+                    <div class="colormap-legend">
+                        <div class="colormap-title">
+                            <span>INFERNO RELATIVE REFLECTANCE GRADIENT</span>
+                            <span style="color: var(--txt-dim);">NORMALIZED INTENSITY [0.0 → 1.0]</span>
+                        </div>
+                        <div class="colormap-bar"></div>
+                        <div class="colormap-labels">
+                            <span>0.0 (Deep Shadow / Low Albedo)</span>
+                            <span>0.5 (Mid-tone Terrain Floor)</span>
+                            <span>1.0 (Reflective Crests / Rim Highlights)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab View 3: Final Compare (Zoomable) -->
+            <div id="compare-view" class="hidden">
+                <!-- Awaiting Data State -->
+                <div id="compare-empty" class="welcome-section fade-in">
+                    <div class="welcome-icon">🔍</div>
+                    <h2>AWAITING COMPARISON DATA</h2>
+                    <p>Execute the Denoising Pipeline first. This view will display a zoomable side-by-side comparison of the raw input versus the optimal denoised output.</p>
+                </div>
+
+                <!-- Compare Results -->
+                <div id="compare-results" class="hidden fade-in">
+                    <h2 class="sec-label">
+                        <span>FINAL COMPARISON / RAW INPUT vs OPTIMAL OUTPUT</span>
+                        <span style="font-size: 0.65rem; color: var(--txt-dim);">SCROLL TO ZOOM · DRAG TO PAN</span>
+                    </h2>
+
+                    <div class="disclaimer-card">
+                        <div class="disclaimer-icon">🔍</div>
+                        <div class="disclaimer-text">
+                            <strong>Interactive Zoom:</strong> Use the <strong>scroll wheel</strong> to zoom in/out on either image. <strong>Click and drag</strong> to pan around. Both images zoom and pan together for synchronized inspection.
+                        </div>
+                    </div>
+
+                    <!-- Zoom Controls -->
+                    <div class="zoom-controls">
+                        <button class="sec-btn" id="zoom-reset-btn">↺ RESET VIEW</button>
+                        <span class="zoom-level" id="zoom-level">100%</span>
+                        <button class="sec-btn" id="zoom-fit-btn">⊞ FIT TO VIEW</button>
+                    </div>
+
+                    <div class="compare-grid">
+                        <div class="zoom-card">
+                            <div class="img-card-head">
+                                <span>RAW PSR INPUT</span>
+                                <span style="color: var(--txt-dim);">BEFORE PROCESSING</span>
+                            </div>
+                            <div class="zoom-viewport" id="zoom-vp-raw">
+                                <img id="img-compare-raw" src="" alt="Raw PSR" draggable="false">
+                            </div>
+                        </div>
+                        <div class="zoom-card best">
+                            <div class="img-card-head">
+                                <span style="color: var(--accent);">OPTIMAL DENOISED (<span id="compare-method">BEST</span>)</span>
+                                <span style="color: var(--accent); font-weight: 700;">🏆 OUTPUT</span>
+                            </div>
+                            <div class="zoom-viewport" id="zoom-vp-clean">
+                                <img id="img-compare-clean" src="" alt="Optimal Denoised" draggable="false">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

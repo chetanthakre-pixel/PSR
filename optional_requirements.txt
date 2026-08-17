@@ -1,0 +1,4 @@
+# Optional: install for DL baseline column (Zero-DCE)
+# Run: pip install -r optional_requirements.txt
+torch>=2.0.0
+torchvision>=0.15.0
