@@ -1,6 +1,5 @@
 # Downloaded assets (not tracked in version control)
 assets/
-weights/
 
 # Python cache
 __pycache__/
@@ -9,10 +8,8 @@ __pycache__/
 *.pyd
 .Python
 
-# Streamlit cache
-.streamlit/cache/
-
 # Env
 .env
 venv/
 .venv/
+pradan.issdc.gov.in/

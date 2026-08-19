@@ -26,7 +26,6 @@ crater / boulder interpretability in PSR science.
 
 import numpy as np
 import cv2
-from scipy.stats import entropy as scipy_entropy
 
 
 # ─── NORMALISATION RANGES (empirically set for PSR lunar imagery) ─────────────
@@ -100,46 +99,19 @@ def compute_entropy(img: np.ndarray) -> float:
     return float(-np.sum(hist * np.log2(hist + 1e-12)))
 
 
-def compute_psnr(original: np.ndarray, enhanced: np.ndarray) -> float:
-    """PSNR in dB. Only meaningful when original is the known ground truth."""
-    mse = float(np.mean((original.astype(np.float32) -
-                          enhanced.astype(np.float32)) ** 2))
-    if mse < 1e-12:
-        return float("inf")
-    return 10.0 * np.log10(1.0 / mse)
-
-
-def compute_ssim(original: np.ndarray, enhanced: np.ndarray) -> float:
-    """SSIM. Only meaningful for synthetic validation with known ground truth."""
-    from skimage.metrics import structural_similarity
-    return float(structural_similarity(
-        original.astype(np.float32),
-        enhanced.astype(np.float32),
-        data_range=1.0,
-    ))
-
-
 # ─── BATCH COMPUTATION ───────────────────────────────────────────────────────
 
 def compute_all_metrics(original: np.ndarray,
-                        denoised: np.ndarray,
-                        ground_truth: np.ndarray | None = None) -> dict:
+                        denoised: np.ndarray) -> dict:
     """
     Compute SNR, CNR, EdgePI, Entropy for one denoised result.
-    If ground_truth is provided, also compute PSNR and SSIM.
     """
-    m = {
+    return {
         "SNR":     round(compute_snr(denoised), 4),
         "CNR":     round(compute_cnr(denoised), 4),
         "EdgePI":  round(compute_edge_preservation(original, denoised), 4),
         "Entropy": round(compute_entropy(denoised), 4),
-        "PSNR":    "N/A (no ground truth)",
-        "SSIM":    "N/A (no ground truth)",
     }
-    if ground_truth is not None:
-        m["PSNR"] = round(compute_psnr(ground_truth, denoised), 2)
-        m["SSIM"] = round(compute_ssim(ground_truth, denoised), 4)
-    return m
 
 
 # ─── SCORING & RANKING ───────────────────────────────────────────────────────
@@ -171,15 +143,4 @@ def rank_methods(all_metrics: dict) -> list[tuple[str, float]]:
     return sorted(scored.items(), key=lambda x: x[1], reverse=True)
 
 
-def dominant_reason(metrics: dict) -> str:
-    """
-    Return a short human-readable string explaining why this method won,
-    e.g. 'highest EdgePI (0.94) + CNR (8.21)'.
-    """
-    top_keys = sorted(_WEIGHTS, key=lambda k: _WEIGHTS[k], reverse=True)[:2]
-    parts = []
-    for k in top_keys:
-        v = metrics.get(k)
-        if isinstance(v, float):
-            parts.append(f"{k} = {v:.3f}")
-    return " -- ".join(parts) if parts else "composite score"
+

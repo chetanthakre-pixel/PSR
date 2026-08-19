@@ -42,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const imgOrig = document.getElementById('img-orig');
     const imgNorm = document.getElementById('img-norm');
     const imgClahe = document.getElementById('img-clahe');
+    const imgHistogram = document.getElementById('img-histogram');
     const denoisersGrid = document.getElementById('denoisers-grid');
     const winnerName = document.getElementById('winner-name');
     const winnerReason = document.getElementById('winner-reason');
@@ -72,14 +73,35 @@ document.addEventListener('DOMContentLoaded', () => {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
-    // Helper: File Download
+    // Helper: File Download (always PNG — encode_img on server uses cv2.imencode('.png'))
     function triggerDownload(base64Data, filename) {
         const link = document.createElement('a');
-        link.href = `data:image/jpeg;base64,${base64Data}`;
+        link.href = `data:image/png;base64,${base64Data}`;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    }
+
+    function countUp(el, endVal, isInt, duration = 800) {
+        if (!el || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            if (el) el.textContent = isInt ? endVal : endVal.toFixed(4);
+            return;
+        }
+        let startTimestamp = null;
+        const step = (timestamp) => {
+            if (!startTimestamp) startTimestamp = timestamp;
+            const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            const currentVal = easeProgress * endVal;
+            el.textContent = isInt ? Math.round(currentVal) : currentVal.toFixed(4);
+            if (progress < 1) {
+                window.requestAnimationFrame(step);
+            } else {
+                el.textContent = isInt ? endVal : endVal.toFixed(4);
+            }
+        };
+        window.requestAnimationFrame(step);
     }
 
     // Tab Switching
@@ -90,6 +112,13 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTab = tab;
         // Deactivate all tabs & hide all views
         allTabs.forEach(t => t.classList.remove('active'));
+        
+        const container = document.querySelector('.content');
+        if (container) {
+            container.classList.add('glitch-effect');
+            setTimeout(() => container.classList.remove('glitch-effect'), 150);
+        }
+        
         allViews.forEach(v => v.classList.add('hidden'));
 
         if (tab === 'denoise') {
@@ -122,9 +151,26 @@ document.addEventListener('DOMContentLoaded', () => {
         tileVal.textContent = e.target.value;
         if (tileVal2) tileVal2.textContent = e.target.value;
     });
+    
+    // Crop labels
+    const cropX = document.getElementById('crop-x');
+    const cropY = document.getElementById('crop-y');
+    const cropXVal = document.getElementById('crop-x-val');
+    const cropYVal = document.getElementById('crop-y-val');
+    
+    if (cropX) {
+        cropX.addEventListener('input', (e) => cropXVal.textContent = e.target.value);
+    }
+    if (cropY) {
+        cropY.addEventListener('input', (e) => cropYVal.textContent = e.target.value);
+    }
 
     // Handle File Selection
     function updateFilePreview(file) {
+        const metadataSection = document.getElementById('metadata-section');
+        const cropSection = document.getElementById('crop-section');
+        const previewContainer = document.getElementById('upload-preview-container');
+        const previewImg = document.getElementById('upload-preview-img');
         if (file) {
             selectedFile = file;
             fileName.textContent = file.name;
@@ -132,11 +178,23 @@ document.addEventListener('DOMContentLoaded', () => {
             fileBadge.classList.remove('hidden');
             dropzoneContent.classList.add('hidden');
             imageSelect.value = ''; // Clear dropdown selection to indicate custom file is active
+            if (metadataSection) metadataSection.style.display = 'none';
+            if (cropSection) cropSection.style.display = 'none'; // Hide native crop tool for custom files
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if(previewImg) previewImg.src = e.target.result;
+                if(previewContainer) previewContainer.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
         } else {
             selectedFile = null;
+            if(previewContainer) previewContainer.classList.add('hidden');
+            if(previewImg) previewImg.src = '';
             imageUpload.value = '';
             fileBadge.classList.add('hidden');
             dropzoneContent.classList.remove('hidden');
+            if (cropSection) cropSection.style.display = 'block'; // Show crop tool again
         }
     }
 
@@ -185,10 +243,42 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // When dropdown changes, clear uploaded custom file
+    const metadataSection = document.getElementById('metadata-section');
+    const metadataContent = document.getElementById('metadata-content');
+
+    async function fetchMetadata(imageName) {
+        if (!imageName || imageName === 'psr_source.jpg') {
+            if (metadataSection) metadataSection.style.display = 'none';
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/metadata/${imageName}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.available && metadataSection && metadataContent) {
+                    let html = `<div style="margin-bottom: 4px;"><strong>Orbit:</strong> ${data.orbit_number}</div>`;
+                    html += `<div style="margin-bottom: 4px;"><strong>Date:</strong> ${data.start_date_time && data.start_date_time.split('T')[0]}</div>`;
+                    html += `<div style="margin-bottom: 4px;"><strong>Lat/Lon:</strong><br>${data.latitude}°, ${data.longitude}°</div>`;
+                    html += `<div style="margin-bottom: 4px;"><strong>Solar Incidence:</strong> ${data.incidence_angle}°</div>`;
+                    html += `<div style="margin-bottom: 4px;"><strong>Sun Elevation:</strong> ${data.emission_angle}°</div>`;
+                    metadataContent.innerHTML = html;
+                    metadataSection.style.display = 'block';
+                } else {
+                    if (metadataSection) metadataSection.style.display = 'none';
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch metadata", e);
+        }
+    }
+
+    // When dropdown changes, clear uploaded custom file and fetch metadata
     imageSelect.addEventListener('change', (e) => {
         if (e.target.value !== '') {
             updateFilePreview(null);
+            fetchMetadata(e.target.value);
+        } else {
+            if (metadataSection) metadataSection.style.display = 'none';
         }
     });
 
@@ -215,11 +305,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadImages();
 
+    // Global reference for metrics export
+    let lastMetricsData = null;
+
+    // Helper: generate delta badge
+    function getDeltaBadge(current, baseline, higherIsBetter) {
+        if (baseline === 0) return '';
+        const pct = ((current - baseline) / Math.abs(baseline)) * 100;
+        if (Math.abs(pct) < 0.1) return `<span class="delta-badge delta-neu">~0%</span>`;
+        const sign = pct > 0 ? '+' : '';
+        const cls = (pct > 0 && higherIsBetter) || (pct < 0 && !higherIsBetter) ? 'delta-pos' : 'delta-neg';
+        return `<span class="delta-badge ${cls}">${sign}${pct.toFixed(1)}%</span>`;
+    }
+
     // Pipeline Execution Handler
     runBtn.addEventListener('click', async () => {
         const formData = new FormData();
         formData.append('clip', parseFloat(clipLimit.value));
         formData.append('tile', parseInt(tileSize.value));
+        if (cropX) formData.append('crop_x', parseFloat(cropX.value));
+        if (cropY) formData.append('crop_y', parseFloat(cropY.value));
 
         const fileToUpload = selectedFile || (imageUpload.files && imageUpload.files.length > 0 ? imageUpload.files[0] : null);
 
@@ -232,7 +337,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Show loading state
+        // Show loading state & update status indicator
+        const statusText = document.getElementById('status-text');
+        const statusDot = document.getElementById('status-dot');
+        if (statusText) statusText.textContent = "PROCESSING...";
+        if (statusDot) statusDot.style.background = "#F5D061";
+        
         welcome.classList.add('hidden');
         results.classList.add('hidden');
         illumEmpty.classList.add('hidden');
@@ -240,6 +350,36 @@ document.addEventListener('DOMContentLoaded', () => {
         compareEmpty.classList.add('hidden');
         compareResults.classList.add('hidden');
         loading.classList.remove('hidden');
+
+        const pipelineStages = document.getElementById('pipeline-stages');
+        const scanBeam = document.getElementById('scan-beam');
+        let stageInterval = null;
+        if (pipelineStages) pipelineStages.classList.remove('hidden');
+        if (scanBeam) scanBeam.classList.add('scanning');
+
+        [1,2,3,4].forEach(i => {
+            const s = document.getElementById(`stage-${i}`);
+            if(s) { s.classList.remove('active'); s.classList.remove('done'); }
+        });
+        let currentStage = 1;
+        const setStage = (s) => {
+            if(s > 1) {
+                const prev = document.getElementById(`stage-${s-1}`);
+                if(prev) { prev.classList.remove('active'); prev.classList.add('done'); }
+            }
+            const curr = document.getElementById(`stage-${s}`);
+            if(curr) curr.classList.add('active');
+        };
+        setStage(1);
+
+        stageInterval = setInterval(() => {
+            currentStage++;
+            if(currentStage <= 4) {
+                setStage(currentStage);
+            } else {
+                clearInterval(stageInterval);
+            }
+        }, 1200);
 
         try {
             const response = await fetch(`${API_BASE}/run-pipeline`, {
@@ -256,22 +396,37 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.error) {
                 alert(`Error: ${data.error}`);
                 loading.classList.add('hidden');
+                if (statusText) statusText.textContent = "TELEMETRY READY";
+                if (statusDot) statusDot.style.background = "var(--success)";
                 setTab(currentTab);
                 return;
             }
 
             hasData = true;
+            lastMetricsData = data; // store for CSV export
 
             // Stage 1: Preprocessing Images
-            imgOrig.src = `data:image/jpeg;base64,${data.preprocessing.original}`;
-            imgNorm.src = `data:image/jpeg;base64,${data.preprocessing.normalized}`;
-            imgClahe.src = `data:image/jpeg;base64,${data.preprocessing.clahe}`;
+            imgOrig.src = `data:image/png;base64,${data.preprocessing.original}`;
+            imgNorm.src = `data:image/png;base64,${data.preprocessing.normalized}`;
+            imgClahe.src = `data:image/png;base64,${data.preprocessing.clahe}`;
+            
+            if (data.preprocessing.histogram_plot && imgHistogram) {
+                imgHistogram.src = `data:image/png;base64,${data.preprocessing.histogram_plot}`;
+                const histContainer = document.getElementById('histogram-container');
+                if (histContainer) histContainer.classList.remove('hidden');
+            } else if (imgHistogram) {
+                const histContainer = document.getElementById('histogram-container');
+                if (histContainer) histContainer.classList.add('hidden');
+            }
 
             // Winner Announcement
-            winnerName.textContent = data.best_method;
+            winnerName.textContent = `${data.best_method} — Recommended`;
             if (winnerReason) {
                 winnerReason.textContent = `Optimal algorithm determined via multi-criteria objective score (${data.ranking[0][1].toFixed(4)}) prioritizing edge retention (EdgePI) and contrast (CNR).`;
             }
+
+            // Baseline metrics for deltas
+            const baseM = data.preprocessing.baseline_metrics;
 
             // Stage 2: Enhancement Benchmarks
             denoisersGrid.innerHTML = '';
@@ -283,69 +438,162 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.className = `img-card ${isBest ? 'best' : ''}`;
 
                 card.innerHTML = `
+                    ${isBest ? '<div class="reticle reticle-tl"></div><div class="reticle reticle-tr"></div><div class="reticle reticle-bl"></div><div class="reticle reticle-br"></div>' : ''}
                     <div class="img-card-head">
                         <span style="color: ${isBest ? 'var(--accent)' : 'inherit'}; font-weight: 600;">
-                            ${methodName} ${isBest ? '🏆 [BEST]' : ''}
+                            ${methodName} ${isBest ? '🏆' : ''}
                         </span>
-                        <span style="color: var(--txt-dim); font-size: 0.68rem;">⏱ ${res.metrics._time.toFixed(2)}s</span>
+                        <div class="card-head-right">
+                            <span style="color: var(--txt-dim); font-size: 0.68rem; margin-right: 6px;">⏱ ${res.metrics._time.toFixed(2)}s</span>
+                            <button class="card-download-btn" title="Download Image" data-method="${methodName}">⬇</button>
+                        </div>
                     </div>
                     <div class="compare-box">
-                        <img class="img-clean" src="data:image/jpeg;base64,${res.image}" alt="${methodName} Denoised">
-                        <img class="img-noisy" src="data:image/jpeg;base64,${data.preprocessing.clahe}" alt="Pre-denoised CLAHE">
-                        <div class="compare-badge">HOVER TO COMPARE</div>
+                        <img class="img-clean" src="data:image/png;base64,${res.image}" alt="${methodName} Denoised">
+                        <img class="img-noisy" src="data:image/png;base64,${data.preprocessing.clahe}" alt="Pre-denoised CLAHE">
+                        <div class="compare-badge">HOVER/TAP TO COMPARE</div>
+                        <div class="compare-crosshair"></div>
                     </div>
                     <div class="mcard">
-                        <div class="mrow"><span class="mk">Weighted Score</span><span class="mv ${isBest ? 'best-v' : ''}">${score.toFixed(4)}</span></div>
-                        <div class="mrow"><span class="mk">EdgePI (Edge Preservation)</span><span class="mv">${res.metrics.EdgePI.toFixed(4)}</span></div>
-                        <div class="mrow"><span class="mk">CNR (Contrast-to-Noise)</span><span class="mv">${res.metrics.CNR.toFixed(4)}</span></div>
-                        <div class="mrow"><span class="mk">SNR (Signal-to-Noise)</span><span class="mv">${res.metrics.SNR.toFixed(4)}</span></div>
-                        <div class="mrow"><span class="mk">Entropy (Information Density)</span><span class="mv">${res.metrics.Entropy.toFixed(4)}</span></div>
+                        <div class="mrow">
+                            <span class="mk">Weighted Score <span class="info-tooltip" data-tooltip="Weighted for PSR use-case: prioritizes CNR + Entropy for shadow-detail recovery.">ⓘ</span></span>
+                            <span class="mv ${isBest ? 'best-v' : ''}"><span class="num-val" data-val="${score}">0.0000</span></span>
+                        </div>
+                        <div class="mrow">
+                            <span class="mk">EdgePI</span>
+                            <span class="mv"><span class="num-val" data-val="${res.metrics.EdgePI}">0.0000</span> ${baseM ? getDeltaBadge(res.metrics.EdgePI, baseM.EdgePI, true) : ''}</span>
+                        </div>
+                        <div class="mrow">
+                            <span class="mk">CNR</span>
+                            <span class="mv"><span class="num-val" data-val="${res.metrics.CNR}">0.0000</span> ${baseM ? getDeltaBadge(res.metrics.CNR, baseM.CNR, true) : ''}</span>
+                        </div>
+                        <div class="mrow">
+                            <span class="mk">SNR</span>
+                            <span class="mv"><span class="num-val" data-val="${res.metrics.SNR}">0.0000</span> ${baseM ? getDeltaBadge(res.metrics.SNR, baseM.SNR, true) : ''}</span>
+                        </div>
+                        <div class="mrow">
+                            <span class="mk">Entropy</span>
+                            <span class="mv"><span class="num-val" data-val="${res.metrics.Entropy}">0.0000</span> ${baseM ? getDeltaBadge(res.metrics.Entropy, baseM.Entropy, true) : ''}</span>
+                        </div>
                     </div>
                 `;
+                
+                // Wire individual download button
+                const btn = card.querySelector('.card-download-btn');
+                btn.addEventListener('click', () => {
+                    triggerDownload(res.image, `PSR_${methodName.replace(/ /g, '_')}.png`);
+                });
+
                 denoisersGrid.appendChild(card);
+                
+                const compareBox = card.querySelector('.compare-box');
+                const crosshair = card.querySelector('.compare-crosshair');
+                if(compareBox && crosshair) {
+                    compareBox.addEventListener('mousemove', (e) => {
+                        const rect = compareBox.getBoundingClientRect();
+                        crosshair.style.left = `${e.clientX - rect.left}px`;
+                        crosshair.style.top = `${e.clientY - rect.top}px`;
+                    });
+                }
+
+                setTimeout(() => {
+                    card.querySelectorAll('.mrow').forEach(mrow => mrow.classList.add('animate-bar'));
+                    card.querySelectorAll('.num-val').forEach(el => {
+                        countUp(el, parseFloat(el.getAttribute('data-val')), false, 800);
+                    });
+                }, 50);
             });
 
             // Stage 3: Illumination Map
             const bestImageBase64 = data.results[data.best_method].image;
-            imgIllumGray.src = `data:image/jpeg;base64,${bestImageBase64}`;
+            imgIllumGray.src = `data:image/png;base64,${bestImageBase64}`;
             if (illumGrayMethod) {
                 illumGrayMethod.textContent = data.best_method;
             }
 
             if (data.illumination_map) {
-                imgIllumColor.src = `data:image/jpeg;base64,${data.illumination_map}`;
+                imgIllumColor.src = `data:image/png;base64,${data.illumination_map}`;
             }
 
-            // Download Buttons
+            // Download Buttons (highest quality PNG)
             if (downloadBtn) {
                 downloadBtn.onclick = () => {
-                    triggerDownload(bestImageBase64, `PSR_Cleaned_${data.best_method.replace(/\s+/g, '_')}.jpg`);
+                    triggerDownload(bestImageBase64, `PSR_Cleaned_${data.best_method.replace(/\s+/g, '_')}.png`);
                 };
             }
             if (downloadGrayBtn) {
                 downloadGrayBtn.onclick = () => {
-                    triggerDownload(bestImageBase64, `PSR_Optimal_Grayscale_${data.best_method.replace(/\s+/g, '_')}.jpg`);
+                    triggerDownload(bestImageBase64, `PSR_Optimal_Grayscale_${data.best_method.replace(/\s+/g, '_')}.png`);
                 };
             }
             if (downloadIllumBtn && data.illumination_map) {
                 downloadIllumBtn.onclick = () => {
-                    triggerDownload(data.illumination_map, `PSR_Relative_Illumination_Inferno_${data.best_method.replace(/\s+/g, '_')}.jpg`);
+                    triggerDownload(data.illumination_map, `PSR_Relative_Illumination_Inferno_${data.best_method.replace(/\s+/g, '_')}.png`);
+                };
+            }
+
+            // Preprocessing + Histogram download buttons — enable & wire up
+            const dlOrig = document.getElementById('download-orig-btn');
+            if (dlOrig) { dlOrig.disabled = false; dlOrig.onclick = () => triggerDownload(data.preprocessing.original, 'PSR_Raw_Input.png'); }
+            const dlNorm = document.getElementById('download-norm-btn');
+            if (dlNorm) { dlNorm.disabled = false; dlNorm.onclick = () => triggerDownload(data.preprocessing.normalized, 'PSR_Normalized.png'); }
+            const dlClahe = document.getElementById('download-clahe-btn');
+            if (dlClahe) { dlClahe.disabled = false; dlClahe.onclick = () => triggerDownload(data.preprocessing.clahe, 'PSR_CLAHE_Enhanced.png'); }
+            const dlHist = document.getElementById('download-histogram-btn');
+            if (dlHist && data.preprocessing.histogram_plot) { dlHist.disabled = false; dlHist.onclick = () => triggerDownload(data.preprocessing.histogram_plot, 'PSR_Histogram_Plot.png'); }
+            
+            // Export Metrics Button
+            const exportMetricsBtn = document.getElementById('export-metrics-btn');
+            if (exportMetricsBtn) {
+                exportMetricsBtn.onclick = () => {
+                    if (!lastMetricsData) return;
+                    let csv = "Algorithm,Weighted Score,EdgePI,CNR,SNR,Entropy,Time(s)\n";
+                    // Include baseline
+                    if (lastMetricsData.preprocessing.baseline_metrics) {
+                        const m = lastMetricsData.preprocessing.baseline_metrics;
+                        csv += `Baseline (CLAHE),${m._score.toFixed(4)},${m.EdgePI.toFixed(4)},${m.CNR.toFixed(4)},${m.SNR.toFixed(4)},${m.Entropy.toFixed(4)},0.0\n`;
+                    }
+                    lastMetricsData.ranking.forEach(([name, score]) => {
+                        const m = lastMetricsData.results[name].metrics;
+                        csv += `${name},${score.toFixed(4)},${m.EdgePI.toFixed(4)},${m.CNR.toFixed(4)},${m.SNR.toFixed(4)},${m.Entropy.toFixed(4)},${m._time.toFixed(3)}\n`;
+                    });
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = "PSR_Metrics_Report.csv";
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
                 };
             }
 
             // Final Compare tab images
-            imgCompareRaw.src = `data:image/jpeg;base64,${data.preprocessing.original}`;
-            imgCompareClean.src = `data:image/jpeg;base64,${bestImageBase64}`;
+            imgCompareRaw.src = `data:image/png;base64,${data.preprocessing.original}`;
+            imgCompareClean.src = `data:image/png;base64,${bestImageBase64}`;
             if (compareMethod) compareMethod.textContent = data.best_method;
             resetZoom();
 
             // Done loading
+            if(stageInterval) clearInterval(stageInterval);
+            const s4 = document.getElementById('stage-4');
+            if(s4) { s4.classList.remove('active'); s4.classList.add('done'); }
+            if (scanBeam) scanBeam.classList.remove('scanning');
+            setTimeout(() => { if (pipelineStages) pipelineStages.classList.add('hidden'); }, 2000);
+
             loading.classList.add('hidden');
+            if (statusText) statusText.textContent = "TELEMETRY READY";
+            if (statusDot) statusDot.style.background = "var(--success)";
             setTab(currentTab);
         } catch (error) {
+            if(stageInterval) clearInterval(stageInterval);
+            if (scanBeam) scanBeam.classList.remove('scanning');
             console.error('Pipeline execution error:', error);
             alert(`Execution failed: ${error.message || 'Could not connect to backend server.'}`);
             loading.classList.add('hidden');
+            if (statusText) statusText.textContent = "TELEMETRY READY";
+            if (statusDot) statusDot.style.background = "var(--success)";
             setTab(currentTab);
         }
     });

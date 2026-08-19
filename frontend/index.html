@@ -11,6 +11,7 @@
     <div id="stars"></div>
     <div id="stars2"></div>
     <div id="stars3"></div>
+    <div id="satellite">🛰️</div>
 
     <!-- Sticky Navigation Header -->
     <header class="top-nav">
@@ -20,8 +21,8 @@
         </div>
         <div class="nav-right">
             <div class="nav-status">
-                <span class="status-dot"></span>
-                <span>TELEMETRY READY</span>
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">TELEMETRY READY</span>
             </div>
             <nav class="nav-tabs">
                 <button class="nav-tab active" id="tab-denoise" data-tab="denoise">
@@ -63,6 +64,10 @@
                         <span class="upload-text">Choose / Drop Image File</span>
                         <span class="upload-hint">PNG, JPG, TIFF, WEBP</span>
                     </div>
+                    <div class="upload-preview-container hidden" id="upload-preview-container">
+                        <img id="upload-preview-img" src="" alt="Raw Image Preview">
+                        <div class="scan-beam" id="scan-beam"></div>
+                    </div>
                     <div class="file-preview-badge hidden" id="file-badge">
                         <div class="file-badge-info">
                             <span class="file-badge-name" id="file-name">filename.png</span>
@@ -73,6 +78,23 @@
                 </div>
             </div>
 
+            <div class="sidebar-section hidden" id="pipeline-stages">
+                <h3 class="sidebar-head">PIPELINE STATUS</h3>
+                <div class="stage-indicators">
+                    <div class="stage-item" id="stage-1"><span class="stage-dot"></span> Preprocessing</div>
+                    <div class="stage-item" id="stage-2"><span class="stage-dot"></span> CLAHE Normalization</div>
+                    <div class="stage-item" id="stage-3"><span class="stage-dot"></span> Denoising Benchmarks</div>
+                    <div class="stage-item" id="stage-4"><span class="stage-dot"></span> Metrics & Scoring</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="metadata-section" style="display: none;">
+                <h3 class="sidebar-head">IMAGE METADATA</h3>
+                <div id="metadata-content" style="font-size: 0.85rem; color: var(--txt-dim); background: rgba(0,0,0,0.2); padding: 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05); font-family: 'JetBrains Mono', monospace; line-height: 1.5; word-break: break-all;">
+                    <!-- Metadata will be injected here -->
+                </div>
+            </div>
+
             <div class="sidebar-section">
                 <h3 class="sidebar-head">CLAHE PARAMETERS</h3>
                 <label for="clip-limit">CLIP LIMIT: <span id="clip-val" style="color: var(--accent); font-weight: bold;">3.0</span></label>
@@ -80,6 +102,16 @@
                 
                 <label for="tile-size">TILE GRID SIZE: <span id="tile-val" style="color: var(--accent); font-weight: bold;">8</span>×<span id="tile-val2" style="color: var(--accent); font-weight: bold;">8</span></label>
                 <input type="range" id="tile-size" min="4" max="16" step="2" value="8">
+            </div>
+            
+            <!-- PDS4 crop controls hidden: server now always returns the full image -->
+            <div class="sidebar-section" id="crop-section" style="display:none;">
+                <h3 class="sidebar-head">PDS4 CROP (NATIVE 0.25m)</h3>
+                <label for="crop-x">X OFFSET (%): <span id="crop-x-val" style="color: var(--accent); font-weight: bold;">50</span>%</label>
+                <input type="range" id="crop-x" min="0" max="100" step="1" value="50">
+                
+                <label for="crop-y">Y OFFSET (%): <span id="crop-y-val" style="color: var(--accent); font-weight: bold;">50</span>%</label>
+                <input type="range" id="crop-y" min="0" max="100" step="1" value="50">
             </div>
 
             <button id="run-btn" class="primary-btn">
@@ -119,6 +151,9 @@
                             <div class="img-wrapper">
                                 <img id="img-orig" src="" alt="Raw PSR">
                             </div>
+                            <div class="card-footer-action">
+                                <button id="download-orig-btn" class="sec-btn" disabled>⬇ DOWNLOAD RAW (PNG)</button>
+                            </div>
                         </div>
                         <div class="img-card">
                             <div class="img-card-head">
@@ -127,6 +162,9 @@
                             </div>
                             <div class="img-wrapper">
                                 <img id="img-norm" src="" alt="Normalized">
+                            </div>
+                            <div class="card-footer-action">
+                                <button id="download-norm-btn" class="sec-btn" disabled>⬇ DOWNLOAD NORMALIZED (PNG)</button>
                             </div>
                         </div>
                         <div class="img-card">
@@ -137,6 +175,23 @@
                             <div class="img-wrapper">
                                 <img id="img-clahe" src="" alt="CLAHE">
                             </div>
+                            <div class="card-footer-action">
+                                <button id="download-clahe-btn" class="sec-btn" disabled>⬇ DOWNLOAD CLAHE (PNG)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Histogram Intensity Distribution Analysis Card -->
+                    <div class="histogram-card" id="histogram-container">
+                        <div class="img-card-head">
+                            <span>INTENSITY DISTRIBUTION ANALYSIS</span>
+                            <span style="color: var(--accent);">HISTOGRAM SHIFT & CONTRAST EXPANSION</span>
+                        </div>
+                        <div class="histogram-wrapper">
+                            <img id="img-histogram" src="" alt="Histogram Plot">
+                        </div>
+                        <div class="card-footer-action">
+                            <button id="download-histogram-btn" class="sec-btn" disabled>⬇ DOWNLOAD HISTOGRAM (PNG)</button>
                         </div>
                     </div>
 
@@ -147,9 +202,12 @@
                             <div class="wbanner-name" id="winner-name">BM3D</div>
                             <div class="wbanner-reason" id="winner-reason">Highest overall weighted score across EdgePI, CNR, SNR, and Entropy metrics.</div>
                         </div>
-                        <div>
+                        <div style="display: flex; gap: 10px;">
                             <button id="download-btn" class="primary-btn" style="width: auto; padding: 12px 24px;">
                                 ⬇ DOWNLOAD CLEANEST IMAGE
+                            </button>
+                            <button id="export-metrics-btn" class="sec-btn" style="height: 100%;">
+                                📊 EXPORT METRICS
                             </button>
                         </div>
                     </div>
@@ -204,6 +262,7 @@
                         </div>
 
                         <div class="img-card best">
+                            <div class="reticle reticle-tl"></div><div class="reticle reticle-tr"></div><div class="reticle reticle-bl"></div><div class="reticle reticle-br"></div>
                             <div class="img-card-head">
                                 <span style="color: var(--accent);">RELATIVE ILLUMINATION (INFERNO)</span>
                                 <span style="color: var(--accent); font-weight: 700;">FALSE-COLOR</span>
@@ -274,6 +333,7 @@
                             </div>
                         </div>
                         <div class="zoom-card best">
+                            <div class="reticle reticle-tl"></div><div class="reticle reticle-tr"></div><div class="reticle reticle-bl"></div><div class="reticle reticle-br"></div>
                             <div class="img-card-head">
                                 <span style="color: var(--accent);">OPTIMAL DENOISED (<span id="compare-method">BEST</span>)</span>
                                 <span style="color: var(--accent); font-weight: 700;">🏆 OUTPUT</span>

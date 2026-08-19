@@ -5,6 +5,7 @@ All functions accept and return float32 grayscale [0, 1] arrays.
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from skimage.restoration import (
     denoise_nl_means,
@@ -101,9 +102,35 @@ _DENOISER_DESC = {
 }
 
 
+def _run_single(name: str, fn, clahe_img: np.ndarray) -> tuple[str, dict]:
+    """Run one denoiser and return (name, result_dict)."""
+    t0 = time.perf_counter()
+    try:
+        out = fn(clahe_img)
+        elapsed = time.perf_counter() - t0
+        return name, {
+            "image": out,
+            "time_s": round(elapsed, 2),
+            "error": None,
+            "label": _DENOISER_LABELS[name],
+            "desc": _DENOISER_DESC[name],
+        }
+    except Exception as exc:
+        elapsed = time.perf_counter() - t0
+        return name, {
+            "image": clahe_img.copy(),  # fallback: return CLAHE output
+            "time_s": round(elapsed, 2),
+            "error": str(exc),
+            "label": _DENOISER_LABELS[name],
+            "desc": _DENOISER_DESC[name],
+        }
+
+
 def run_all_denoisers(clahe_img: np.ndarray) -> dict:
     """
-    Run NLM, BM3D, and Wavelet on the CLAHE-preprocessed input.
+    Run NLM, BM3D, and Wavelet on the CLAHE-preprocessed input IN PARALLEL.
+    Uses ThreadPoolExecutor — scipy/numpy release the GIL for heavy math,
+    giving near-3× speedup on multi-core machines.
 
     Returns
     -------
@@ -117,25 +144,12 @@ def run_all_denoisers(clahe_img: np.ndarray) -> dict:
       }
     """
     results = {}
-    for name, fn in _DENOISERS.items():
-        t0 = time.perf_counter()
-        try:
-            out = fn(clahe_img)
-            elapsed = time.perf_counter() - t0
-            results[name] = {
-                "image": out,
-                "time_s": round(elapsed, 2),
-                "error": None,
-                "label": _DENOISER_LABELS[name],
-                "desc": _DENOISER_DESC[name],
-            }
-        except Exception as exc:
-            elapsed = time.perf_counter() - t0
-            results[name] = {
-                "image": clahe_img.copy(),  # fallback: return CLAHE output
-                "time_s": round(elapsed, 2),
-                "error": str(exc),
-                "label": _DENOISER_LABELS[name],
-                "desc": _DENOISER_DESC[name],
-            }
+    with ThreadPoolExecutor(max_workers=len(_DENOISERS)) as executor:
+        futures = {
+            executor.submit(_run_single, name, fn, clahe_img): name
+            for name, fn in _DENOISERS.items()
+        }
+        for future in as_completed(futures):
+            name, result = future.result()
+            results[name] = result
     return results

@@ -12,7 +12,6 @@ This project solves the challenge of extracting usable geological features (boul
 
 ## Features
 - **Robust Image Decoding**: Supports JPG, PNG, TIFF, and 16-bit images.
-- **Smart Panel Cropping**: Auto-detects and isolates the PSR panel from side-by-side ISRO comparison images.
 - **Blind Quality Metrics**: Evaluates performance without requiring a "clean" ground truth reference.
 - **Interactive Web UI**: Built with HTML/CSS/JS (no heavy framework), featuring drag-and-drop upload, parameter tuning, and synchronized zoom/pan image comparison.
 - **FastAPI Backend**: Efficient, async Python backend.
